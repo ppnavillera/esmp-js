@@ -35,6 +35,7 @@ const createOrUpdatePage = async (fileBaseName) => {
     .map((part) => part.trim());
 
   const searchUrl = `https://api.notion.com/v1/databases/${databaseId}/query`;
+  console.log(fileBaseName);
   const searchPayload = {
     filter: {
       property: "Song",
@@ -104,7 +105,14 @@ const createOrUpdatePage = async (fileBaseName) => {
       console.log(`${title}에 대한 페이지 생성 성공: ${pageId}`);
     }
   } catch (error) {
-    console.error(`API 요청 중 오류 발생: ${error}`);
+    if (error.response) {
+      console.error(
+        `API 요청 중 오류 발생: ${error.response.status} - ${error.response.statusText}`
+      );
+      console.error(`오류 응답 데이터: ${JSON.stringify(error.response.data)}`);
+    } else {
+      console.error(`API 요청 중 오류 발생: ${error.message}`);
+    }
   } finally {
     delete processingFiles[fileBaseName];
   }
@@ -180,4 +188,4 @@ const uploadExistingFiles = async (folderPath) => {
   );
 };
 
-uploadExistingFiles("/Users/aeonapsychelovelace/Downloads/ESMP/upload");
+uploadExistingFiles("/Users/aeonapsychelovelace/Downloads/ESMP/test2");
