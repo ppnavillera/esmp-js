@@ -173,9 +173,11 @@ const uploadExistingFiles = async (folderPath) => {
     })
   );
 
-  filesInFolder.forEach((fileBaseName) => {
-    createOrUpdatePage(fileBaseName);
-  });
+  await Promise.all(
+    filesInFolder.map(async (fileBaseName) => {
+      await createOrUpdatePage(fileBaseName);
+    })
+  );
 };
 
 uploadExistingFiles("/Users/aeonapsychelovelace/Downloads/ESMP/upload");
