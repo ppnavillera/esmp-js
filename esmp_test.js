@@ -2,7 +2,6 @@ require("dotenv").config();
 const fs = require("fs");
 const path = require("path");
 const axios = require("axios");
-const chokidar = require("chokidar");
 
 const notionToken = process.env.NOTION_TOKEN;
 const databaseId = process.env.NOTION_DATABASE_ID;
@@ -102,32 +101,6 @@ const archivePage = async (fileBaseName) => {
     );
   }
 };
-
-const watcher = chokidar.watch(
-  "/Users/aeonapsychelovelace/Downloads/ESMP/upload",
-  {
-    ignored: /(^|[\/\\])\../, // .DS_Store 파일 무시
-    persistent: true,
-  }
-);
-
-watcher
-  .on("add", (filePath) => {
-    const fileName = path.basename(filePath);
-    const fileBaseName = path.parse(fileName).name;
-    if (fileName !== ".DS_Store") {
-      console.log(`파일 추가 감지: ${filePath}`);
-      createOrUpdatePage(fileBaseName);
-    }
-  })
-  .on("unlink", (filePath) => {
-    const fileName = path.basename(filePath);
-    const fileBaseName = path.parse(fileName).name; // 확장자를 제거한 파일 이름
-    if (fileName !== ".DS_Store") {
-      console.log(`파일 삭제 감지: ${filePath}`);
-      archivePage(fileBaseName);
-    }
-  });
 
 const uploadExistingFiles = (folderPath) => {
   fs.readdir(folderPath, (err, files) => {
