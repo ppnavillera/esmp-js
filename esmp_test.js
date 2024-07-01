@@ -27,7 +27,7 @@ const createOrUpdatePage = async (fileBaseName) => {
     return;
   }
 
-  processingFiles[fileBaseName] = true; // 파일 처리 시작
+  processingFiles[fileBaseName] = true;
   console.log(`createOrUpdatePage 호출: ${fileBaseName}`);
 
   const searchUrl = `https://api.notion.com/v1/databases/${databaseId}/query`;
@@ -78,7 +78,7 @@ const createOrUpdatePage = async (fileBaseName) => {
   } catch (error) {
     console.error(`API 요청 중 오류 발생: ${error}`);
   } finally {
-    delete processingFiles[fileBaseName]; // 파일 처리 완료
+    delete processingFiles[fileBaseName];
   }
 };
 
@@ -89,11 +89,22 @@ const archivePage = async (fileBaseName) => {
     const archiveData = { archived: true };
 
     try {
-      await axios.patch(archiveUrl, archiveData, { headers: notionHeaders });
+      await axios.patch(archiveUrl, archiveData, {
+        headers: notionHeaders,
+      });
       console.log(`${fileBaseName}에 대한 페이지 아카이브 성공: ${pageId}`);
       delete fileToPageId[fileBaseName];
     } catch (error) {
-      console.error(`API 요청 중 오류 발생: ${error}`);
+      if (error.response) {
+        console.error(
+          `API 요청 중 오류 발생: ${error.response.status} - ${error.response.statusText}`
+        );
+        console.error(
+          `오류 응답 데이터: ${JSON.stringify(error.response.data)}`
+        );
+      } else {
+        console.error(`API 요청 중 오류 발생: ${error.message}`);
+      }
     }
   } else {
     console.log(
@@ -102,22 +113,50 @@ const archivePage = async (fileBaseName) => {
   }
 };
 
-const uploadExistingFiles = (folderPath) => {
-  fs.readdir(folderPath, (err, files) => {
-    if (err) {
-      console.error(`폴더 읽기 중 오류 발생: ${err}`);
-      return;
-    }
-    files.forEach((fileName) => {
-      if (fileName !== ".DS_Store") {
-        const filePath = path.join(folderPath, fileName);
-        if (fs.lstatSync(filePath).isFile()) {
-          const fileBaseName = path.parse(fileName).name;
-          createOrUpdatePage(fileBaseName);
-        }
-      }
-    });
+const getNotionPages = async () => {
+  let pages = [];
+  let hasMore = true;
+  let startCursor = undefined;
+
+  while (hasMore) {
+    const response = await axios.post(
+      `https://api.notion.com/v1/databases/${databaseId}/query`,
+      { start_cursor: startCursor },
+      { headers: notionHeaders }
+    );
+
+    pages = pages.concat(response.data.results);
+    hasMore = response.data.has_more;
+    startCursor = response.data.next_cursor;
+  }
+
+  return pages;
+};
+
+const uploadExistingFiles = async (folderPath) => {
+  const filesInFolder = fs
+    .readdirSync(folderPath)
+    .filter((fileName) => fileName !== ".DS_Store")
+    .map((fileName) => path.parse(fileName).name);
+
+  const notionPages = await getNotionPages();
+
+  const pagesToArchive = notionPages.filter((page) => {
+    const pageTitle = page.properties.Song.title[0].text.content;
+    return !filesInFolder.includes(pageTitle);
+  });
+
+  await Promise.all(
+    pagesToArchive.map(async (page) => {
+      const pageTitle = page.properties.Song.title[0].text.content;
+      fileToPageId[pageTitle] = page.id;
+      await archivePage(pageTitle);
+    })
+  );
+
+  filesInFolder.forEach((fileBaseName) => {
+    createOrUpdatePage(fileBaseName);
   });
 };
 
-uploadExistingFiles("/Users/aeonapsychelovelace/Downloads/ESMP/upload");
+uploadExistingFiles("/Users/aeonapsychelovelace/Downloads/ESMP/t");
