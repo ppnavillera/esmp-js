@@ -30,12 +30,30 @@ const createOrUpdatePage = async (fileBaseName) => {
   processingFiles[fileBaseName] = true;
   console.log(`createOrUpdatePage 호출: ${fileBaseName}`);
 
-  const [id, title, status] = fileBaseName
-    .split("_")
-    .map((part) => part.trim());
+  const parts = fileBaseName.split("_");
+  let id, titleParts;
+
+  if (/^ESMP\d+$/.test(parts[0])) {
+    // 첫 번째 부분이 ESMP로 시작하는 숫자인지 확인
+    id = parts[0].replace("ESMP", ""); // ESMP 접두어 제거
+    titleParts = parts.slice(1);
+  } else {
+    id = parts[0]; // 숫자가 아니면 첫 번째 부분을 id로 사용
+    titleParts = parts.slice(1);
+  }
+
+  let title = titleParts.join("_").trim();
+  let statusMatch = title.match(/\((.*?)\)\s*$/);
+  let status = statusMatch ? statusMatch[1] : "Unknown";
+
+  if (statusMatch) {
+    title = title.replace(statusMatch[0], "").trim();
+  }
+
+  console.log(`ID: ${id}, Title: ${title}, Status: ${status}`);
 
   const searchUrl = `https://api.notion.com/v1/databases/${databaseId}/query`;
-  console.log(fileBaseName);
+  console.log(title);
   const searchPayload = {
     filter: {
       property: "Song",
@@ -57,7 +75,7 @@ const createOrUpdatePage = async (fileBaseName) => {
 
       const updateData = {
         properties: {
-          Property: {
+          Properties: {
             multi_select: [{ name: status }],
           },
           ID: {
@@ -87,11 +105,11 @@ const createOrUpdatePage = async (fileBaseName) => {
               },
             ],
           },
-          Property: {
-            multi_select: [{ name: status }],
-          },
           ID: {
             number: Number(id),
+          },
+          Properties: {
+            multi_select: [{ name: status }],
           },
         },
       };
