@@ -30,12 +30,16 @@ const createOrUpdatePage = async (fileBaseName) => {
   processingFiles[fileBaseName] = true;
   console.log(`createOrUpdatePage 호출: ${fileBaseName}`);
 
+  const [id, title, status] = fileBaseName
+    .split("_")
+    .map((part) => part.trim());
+
   const searchUrl = `https://api.notion.com/v1/databases/${databaseId}/query`;
   const searchPayload = {
     filter: {
       property: "Song",
       title: {
-        equals: fileBaseName,
+        equals: title,
       },
     },
   };
@@ -47,8 +51,26 @@ const createOrUpdatePage = async (fileBaseName) => {
     const results = response.data.results;
     if (results.length > 0) {
       const pageId = results[0].id;
-      fileToPageId[fileBaseName] = pageId;
-      console.log(`${fileBaseName}에 대한 기존 페이지 업데이트: ${pageId}`);
+      fileToPageId[title] = pageId;
+      console.log(`${title}에 대한 기존 페이지 업데이트: ${pageId}`);
+
+      const updateData = {
+        properties: {
+          Property: {
+            multi_select: [{ name: status }],
+          },
+          ID: {
+            number: Number(id),
+          },
+        },
+      };
+
+      await axios.patch(
+        `https://api.notion.com/v1/pages/${pageId}`,
+        updateData,
+        { headers: notionHeaders }
+      );
+      console.log(`${title} 페이지 업데이트 성공: ${pageId}`);
     } else {
       const pageData = {
         parent: {
@@ -59,10 +81,16 @@ const createOrUpdatePage = async (fileBaseName) => {
             title: [
               {
                 text: {
-                  content: fileBaseName,
+                  content: title,
                 },
               },
             ],
+          },
+          Property: {
+            multi_select: [{ name: status }],
+          },
+          ID: {
+            number: Number(id),
           },
         },
       };
@@ -72,8 +100,8 @@ const createOrUpdatePage = async (fileBaseName) => {
         { headers: notionHeaders }
       );
       const pageId = createResponse.data.id;
-      fileToPageId[fileBaseName] = pageId;
-      console.log(`${fileBaseName}에 대한 페이지 생성 성공: ${pageId}`);
+      fileToPageId[title] = pageId;
+      console.log(`${title}에 대한 페이지 생성 성공: ${pageId}`);
     }
   } catch (error) {
     console.error(`API 요청 중 오류 발생: ${error}`);
@@ -82,34 +110,23 @@ const createOrUpdatePage = async (fileBaseName) => {
   }
 };
 
-const archivePage = async (fileBaseName) => {
-  const pageId = fileToPageId[fileBaseName];
-  if (pageId) {
-    const archiveUrl = `https://api.notion.com/v1/pages/${pageId}`;
-    const archiveData = { archived: true };
+const archivePage = async (pageId, pageTitle) => {
+  const archiveUrl = `https://api.notion.com/v1/pages/${pageId}`;
+  const archiveData = { archived: true };
 
-    try {
-      await axios.patch(archiveUrl, archiveData, {
-        headers: notionHeaders,
-      });
-      console.log(`${fileBaseName}에 대한 페이지 아카이브 성공: ${pageId}`);
-      delete fileToPageId[fileBaseName];
-    } catch (error) {
-      if (error.response) {
-        console.error(
-          `API 요청 중 오류 발생: ${error.response.status} - ${error.response.statusText}`
-        );
-        console.error(
-          `오류 응답 데이터: ${JSON.stringify(error.response.data)}`
-        );
-      } else {
-        console.error(`API 요청 중 오류 발생: ${error.message}`);
-      }
+  try {
+    await axios.patch(archiveUrl, archiveData, { headers: notionHeaders });
+    console.log(`${pageTitle}에 대한 페이지 아카이브 성공: ${pageId}`);
+    delete fileToPageId[pageTitle];
+  } catch (error) {
+    if (error.response) {
+      console.error(
+        `API 요청 중 오류 발생: ${error.response.status} - ${error.response.statusText}`
+      );
+      console.error(`오류 응답 데이터: ${JSON.stringify(error.response.data)}`);
+    } else {
+      console.error(`API 요청 중 오류 발생: ${error.message}`);
     }
-  } else {
-    console.log(
-      `파일에 해당하는 페이지 ID를 찾을 수 없습니다: ${fileBaseName}`
-    );
   }
 };
 
@@ -143,14 +160,16 @@ const uploadExistingFiles = async (folderPath) => {
 
   const pagesToArchive = notionPages.filter((page) => {
     const pageTitle = page.properties.Song.title[0].text.content;
-    return !filesInFolder.includes(pageTitle);
+    return !filesInFolder.some((fileBaseName) =>
+      fileBaseName.includes(pageTitle)
+    );
   });
 
   await Promise.all(
     pagesToArchive.map(async (page) => {
       const pageTitle = page.properties.Song.title[0].text.content;
       fileToPageId[pageTitle] = page.id;
-      await archivePage(pageTitle);
+      await archivePage(page.id, pageTitle);
     })
   );
 
@@ -159,4 +178,4 @@ const uploadExistingFiles = async (folderPath) => {
   });
 };
 
-uploadExistingFiles("/Users/aeonapsychelovelace/Downloads/ESMP/t");
+uploadExistingFiles("/Users/aeonapsychelovelace/Downloads/ESMP/upload");
