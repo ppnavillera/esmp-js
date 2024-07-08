@@ -1,11 +1,36 @@
-require("dotenv").config();
-const fs = require("fs");
-const path = require("path");
-const axios = require("axios");
+import axios from "axios";
+import { storage } from "./firebase.js";
+import dotenv from "dotenv";
+import fs from "fs";
+import path from "path";
+import { getDownloadURL, ref, uploadBytes } from "firebase/storage";
+
+dotenv.config();
 
 const notionToken = process.env.NOTION_TOKEN;
 const databaseId = process.env.NOTION_DATABASE_ID;
 const dirPath = process.env.FOLDER_PATH;
+
+const uploadFileToFirebase = async (filePath, fileName) => {
+  try {
+    const storageRef = ref(storage, `files/${fileName}.mp3`);
+    const fileBuffer = fs.readFileSync(filePath);
+    const metadata = {
+      contentType: "audio/mpeg",
+    };
+
+    console.log(fileBuffer);
+
+    const result = await uploadBytes(storageRef, fileBuffer, metadata);
+    const downloadURL = await getDownloadURL(result.ref);
+    // console.log(filePath);
+    console.log(downloadURL);
+    return downloadURL;
+  } catch (error) {
+    console.error(`파일 업로드 중 오류 발생: ${error}`);
+    // throw error;
+  }
+};
 
 if (!notionToken || !databaseId) {
   throw new Error(
@@ -23,6 +48,7 @@ const fileToPageId = {};
 const processingFiles = {}; // 파일 처리 상태를 추적하는 객체
 
 const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
 const createOrUpdatePage = async (fileBaseName) => {
   if (processingFiles[fileBaseName]) {
     console.log(`${fileBaseName} 이미 처리 중입니다.`);
@@ -68,11 +94,11 @@ const createOrUpdatePage = async (fileBaseName) => {
     },
   };
 
-  console.log(`검색 페이로드: ${JSON.stringify(searchPayload)}`);
+  // console.log(`검색 페이로드: ${JSON.stringify(searchPayload)}`);
   const response = await axios.post(searchUrl, searchPayload, {
     headers: notionHeaders,
   });
-  console.log(`검색 결과: ${JSON.stringify(response.data.results)}`);
+  // console.log(`검색 결과: ${JSON.stringify(response.data.results)}`);
 
   const maxRetries = 5;
   let attempts = 0;
@@ -84,10 +110,13 @@ const createOrUpdatePage = async (fileBaseName) => {
       });
       const results = response.data.results;
 
+      const filePath = path.join(dirPath, `${fileBaseName}.mp3`);
+      const downloadURL = await uploadFileToFirebase(filePath, fileBaseName);
+
       if (results.length > 0) {
         const pageId = results[0].id;
         fileToPageId[title] = pageId;
-        console.log(`${title}에 대한 기존 페이지 업데이트: ${pageId}`);
+        // console.log(`${title}에 대한 기존 페이지 업데이트: ${pageId}`);
 
         const updateData = {
           properties: {
@@ -97,6 +126,9 @@ const createOrUpdatePage = async (fileBaseName) => {
             ID: {
               number: Number(id),
             },
+            // Link: {
+            //   url: downloadURL,
+            // },
           },
         };
 
@@ -105,7 +137,7 @@ const createOrUpdatePage = async (fileBaseName) => {
           updateData,
           { headers: notionHeaders }
         );
-        console.log(`${title} 페이지 업데이트 성공: ${pageId}`);
+        // console.log(`${title} 페이지 업데이트 성공: ${pageId}`);
       } else {
         const pageData = {
           parent: {
@@ -136,7 +168,7 @@ const createOrUpdatePage = async (fileBaseName) => {
         );
         const pageId = createResponse.data.id;
         fileToPageId[title] = pageId;
-        console.log(`${title}에 대한 페이지 생성 성공: ${pageId}`);
+        // console.log(`${title}에 대한 페이지 생성 성공: ${pageId}`);
       }
       break;
     } catch (error) {
@@ -194,8 +226,10 @@ const uploadExistingFiles = async (folderPath) => {
     .filter((fileName) => fileName !== ".DS_Store")
     .map((fileName) => path.parse(fileName).name);
 
+  console.log("패스 " + filesInFolder);
   await Promise.all(
     filesInFolder.map(async (fileBaseName) => {
+      // console.log(fileBaseName);
       await createOrUpdatePage(fileBaseName);
     })
   );
