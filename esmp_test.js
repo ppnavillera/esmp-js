@@ -1,10 +1,36 @@
-require("dotenv").config();
-const fs = require("fs");
-const path = require("path");
-const axios = require("axios");
+import axios from "axios";
+import { storage } from "./firebase.js";
+import dotenv from "dotenv";
+import fs from "fs";
+import path from "path";
+import { getDownloadURL, ref, uploadBytes } from "firebase/storage";
+
+dotenv.config();
 
 const notionToken = process.env.NOTION_TOKEN;
 const databaseId = process.env.NOTION_DATABASE_ID;
+const dirPath = process.env.FOLDER_PATH;
+
+const uploadFileToFirebase = async (filePath, fileName) => {
+  try {
+    const storageRef = ref(storage, `files/${fileName}.mp3`);
+    const fileBuffer = fs.readFileSync(filePath);
+    const metadata = {
+      contentType: "audio/mpeg",
+    };
+
+    console.log(fileBuffer);
+
+    const result = await uploadBytes(storageRef, fileBuffer, metadata);
+    const downloadURL = await getDownloadURL(result.ref);
+    // console.log(filePath);
+    console.log(downloadURL);
+    return downloadURL;
+  } catch (error) {
+    console.error(`파일 업로드 중 오류 발생: ${error}`);
+    // throw error;
+  }
+};
 
 if (!notionToken || !databaseId) {
   throw new Error(
@@ -21,6 +47,8 @@ const notionHeaders = {
 const fileToPageId = {};
 const processingFiles = {}; // 파일 처리 상태를 추적하는 객체
 
+const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
 const createOrUpdatePage = async (fileBaseName) => {
   if (processingFiles[fileBaseName]) {
     console.log(`${fileBaseName} 이미 처리 중입니다.`);
@@ -34,126 +62,142 @@ const createOrUpdatePage = async (fileBaseName) => {
   let id, titleParts;
 
   if (/^ESMP\d+$/.test(parts[0])) {
-    // 첫 번째 부분이 ESMP로 시작하는 숫자인지 확인
-    id = parts[0].replace("ESMP", ""); // ESMP 접두어 제거
+    id = parts[0].replace("ESMP", "");
     titleParts = parts.slice(1);
   } else {
-    id = parts[0]; // 숫자가 아니면 첫 번째 부분을 id로 사용
+    id = parts[0];
     titleParts = parts.slice(1);
   }
 
   let title = titleParts.join("_").trim();
   let statusMatch = title.match(/\((.*?)\)\s*$/);
-  let status = statusMatch ? statusMatch[1] : "Unknown";
+  let status = statusMatch ? statusMatch[1].replace(/,/g, " ") : "Unknown";
 
   if (statusMatch) {
     title = title.replace(statusMatch[0], "").trim();
   }
 
   console.log(`ID: ${id}, Title: ${title}, Status: ${status}`);
+  // title 변수를 정규화
+  const normalizedTitle = title.normalize("NFC");
 
+  // Notion API 검색 URL
   const searchUrl = `https://api.notion.com/v1/databases/${databaseId}/query`;
-  console.log(title);
+  console.log(normalizedTitle);
+
   const searchPayload = {
     filter: {
       property: "Song",
       title: {
-        equals: title,
+        contains: normalizedTitle, // 'contains'로 변경하여 부분 일치 검색
       },
     },
   };
 
-  try {
-    const response = await axios.post(searchUrl, searchPayload, {
-      headers: notionHeaders,
-    });
-    const results = response.data.results;
-    if (results.length > 0) {
-      const pageId = results[0].id;
-      fileToPageId[title] = pageId;
-      console.log(`${title}에 대한 기존 페이지 업데이트: ${pageId}`);
+  // console.log(`검색 페이로드: ${JSON.stringify(searchPayload)}`);
+  const response = await axios.post(searchUrl, searchPayload, {
+    headers: notionHeaders,
+  });
+  // console.log(`검색 결과: ${JSON.stringify(response.data.results)}`);
 
-      const updateData = {
-        properties: {
-          Properties: {
-            multi_select: [{ name: status }],
-          },
-          ID: {
-            number: Number(id),
-          },
-        },
-      };
+  const maxRetries = 5;
+  let attempts = 0;
 
-      await axios.patch(
-        `https://api.notion.com/v1/pages/${pageId}`,
-        updateData,
-        { headers: notionHeaders }
-      );
-      console.log(`${title} 페이지 업데이트 성공: ${pageId}`);
-    } else {
-      const pageData = {
-        parent: {
-          database_id: databaseId,
-        },
-        properties: {
-          Song: {
-            title: [
-              {
-                text: {
-                  content: title,
+  while (attempts < maxRetries) {
+    try {
+      const response = await axios.post(searchUrl, searchPayload, {
+        headers: notionHeaders,
+      });
+      const results = response.data.results;
+
+      const filePath = path.join(dirPath, `${fileBaseName}.mp3`);
+      const downloadURL = await uploadFileToFirebase(filePath, fileBaseName);
+
+      if (results.length > 0) {
+        const pageId = results[0].id;
+        fileToPageId[title] = pageId;
+        // console.log(`${title}에 대한 기존 페이지 업데이트: ${pageId}`);
+
+        const updateData = {
+          properties: {
+            Properties: {
+              multi_select: [{ name: status }],
+            },
+            ID: {
+              number: Number(id),
+            },
+            // Link: {
+            //   url: downloadURL,
+            // },
+          },
+        };
+
+        await axios.patch(
+          `https://api.notion.com/v1/pages/${pageId}`,
+          updateData,
+          { headers: notionHeaders }
+        );
+        // console.log(`${title} 페이지 업데이트 성공: ${pageId}`);
+      } else {
+        const pageData = {
+          parent: {
+            database_id: databaseId,
+          },
+          properties: {
+            Song: {
+              title: [
+                {
+                  text: {
+                    content: title,
+                  },
                 },
-              },
-            ],
+              ],
+            },
+            ID: {
+              number: Number(id),
+            },
+            Properties: {
+              multi_select: [{ name: status }],
+            },
           },
-          ID: {
-            number: Number(id),
-          },
-          Properties: {
-            multi_select: [{ name: status }],
-          },
-        },
-      };
-      const createResponse = await axios.post(
-        "https://api.notion.com/v1/pages",
-        pageData,
-        { headers: notionHeaders }
-      );
-      const pageId = createResponse.data.id;
-      fileToPageId[title] = pageId;
-      console.log(`${title}에 대한 페이지 생성 성공: ${pageId}`);
-    }
-  } catch (error) {
-    if (error.response) {
-      console.error(
-        `API 요청 중 오류 발생: ${error.response.status} - ${error.response.statusText}`
-      );
-      console.error(`오류 응답 데이터: ${JSON.stringify(error.response.data)}`);
-    } else {
-      console.error(`API 요청 중 오류 발생: ${error.message}`);
-    }
-  } finally {
-    delete processingFiles[fileBaseName];
-  }
-};
-
-const archivePage = async (pageId, pageTitle) => {
-  const archiveUrl = `https://api.notion.com/v1/pages/${pageId}`;
-  const archiveData = { archived: true };
-
-  try {
-    await axios.patch(archiveUrl, archiveData, { headers: notionHeaders });
-    console.log(`${pageTitle}에 대한 페이지 아카이브 성공: ${pageId}`);
-    delete fileToPageId[pageTitle];
-  } catch (error) {
-    if (error.response) {
-      console.error(
-        `API 요청 중 오류 발생: ${error.response.status} - ${error.response.statusText}`
-      );
-      console.error(`오류 응답 데이터: ${JSON.stringify(error.response.data)}`);
-    } else {
-      console.error(`API 요청 중 오류 발생: ${error.message}`);
+        };
+        const createResponse = await axios.post(
+          "https://api.notion.com/v1/pages",
+          pageData,
+          { headers: notionHeaders }
+        );
+        const pageId = createResponse.data.id;
+        fileToPageId[title] = pageId;
+        // console.log(`${title}에 대한 페이지 생성 성공: ${pageId}`);
+      }
+      break;
+    } catch (error) {
+      if (error.response) {
+        if (error.response.status === 409) {
+          attempts++;
+          console.error(
+            `파일 "${fileBaseName}"에 대해 충돌 발생: ${error.response.status} - ${error.response.statusText}. 재시도 중... (${attempts}/${maxRetries})`
+          );
+          await delay(1000 * attempts);
+        } else {
+          console.error(
+            `파일 "${fileBaseName}"에 대해 API 요청 중 오류 발생: ${error.response.status} - ${error.response.statusText}`
+          );
+          console.error(
+            `오류 응답 데이터: ${JSON.stringify(error.response.data)}`
+          );
+          break;
+        }
+      } else {
+        console.error(
+          `파일 "${fileBaseName}"에 대해 API 요청 중 오류 발생: ${error.message}`
+        );
+        break;
+      }
     }
   }
+
+  delete processingFiles[fileBaseName];
 };
 
 const getNotionPages = async () => {
@@ -182,28 +226,13 @@ const uploadExistingFiles = async (folderPath) => {
     .filter((fileName) => fileName !== ".DS_Store")
     .map((fileName) => path.parse(fileName).name);
 
-  const notionPages = await getNotionPages();
-
-  const pagesToArchive = notionPages.filter((page) => {
-    const pageTitle = page.properties.Song.title[0].text.content;
-    return !filesInFolder.some((fileBaseName) =>
-      fileBaseName.includes(pageTitle)
-    );
-  });
-
-  await Promise.all(
-    pagesToArchive.map(async (page) => {
-      const pageTitle = page.properties.Song.title[0].text.content;
-      fileToPageId[pageTitle] = page.id;
-      await archivePage(page.id, pageTitle);
-    })
-  );
-
+  console.log("패스 " + filesInFolder);
   await Promise.all(
     filesInFolder.map(async (fileBaseName) => {
+      // console.log(fileBaseName);
       await createOrUpdatePage(fileBaseName);
     })
   );
 };
 
-uploadExistingFiles("/Users/aeonapsychelovelace/Downloads/ESMP/test2");
+uploadExistingFiles(dirPath);
