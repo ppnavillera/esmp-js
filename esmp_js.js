@@ -22,11 +22,10 @@ const uploadFileToFirebase = async (filePath, fileName) => {
 
     const result = await uploadBytes(storageRef, fileBuffer, metadata);
     const downloadURL = await getDownloadURL(result.ref);
-    // console.log(downloadURL);
+    console.log(fileName + "업로드");
     return downloadURL;
   } catch (error) {
     console.error(`파일 업로드 중 오류 발생: ${error}`);
-    // throw error;
   }
 };
 
@@ -88,10 +87,6 @@ const createOrUpdatePage = async (fileBaseName) => {
   };
 
   // console.log(`검색 페이로드: ${JSON.stringify(searchPayload)}`);
-  const response = await axios.post(searchUrl, searchPayload, {
-    headers: notionHeaders,
-  });
-  // console.log(`검색 결과: ${JSON.stringify(response.data.results)}`);
 
   const maxRetries = 5;
   let attempts = 0;
@@ -103,38 +98,11 @@ const createOrUpdatePage = async (fileBaseName) => {
       });
       const results = response.data.results;
 
-      const filePath = path.join(dirPath, `${fileBaseName}.mp3`);
-      const downloadURL = await uploadFileToFirebase(filePath, fileBaseName);
+      if (results.length === 0) {
+        const filePath = path.join(dirPath, `${fileBaseName}.mp3`);
+        console.log(fileBaseName);
+        const downloadURL = await uploadFileToFirebase(filePath, fileBaseName);
 
-      if (results.length > 0) {
-        const pageId = results[0].id;
-        fileToPageId[title] = pageId;
-        // console.log(`${title}에 대한 기존 페이지 업데이트: ${pageId}`);
-
-        const updateData = {
-          properties: {
-            Properties: {
-              multi_select: [{ name: status }],
-            },
-            ID: {
-              number: Number(id),
-            },
-            Properties: {
-              multi_select: [{ name: status }],
-            },
-            Link: {
-              url: downloadURL,
-            },
-          },
-        };
-
-        await axios.patch(
-          `https://api.notion.com/v1/pages/${pageId}`,
-          updateData,
-          { headers: notionHeaders }
-        );
-        console.log(`${title} 페이지 업데이트 성공: ${pageId}`);
-      } else {
         const pageData = {
           parent: {
             database_id: databaseId,
@@ -160,6 +128,7 @@ const createOrUpdatePage = async (fileBaseName) => {
             },
           },
         };
+
         const createResponse = await axios.post(
           "https://api.notion.com/v1/pages",
           pageData,
@@ -168,6 +137,8 @@ const createOrUpdatePage = async (fileBaseName) => {
         const pageId = createResponse.data.id;
         fileToPageId[title] = pageId;
         console.log(`${title}에 대한 페이지 생성 성공: ${pageId}`);
+      } else {
+        // console.log(`${title}에 대한 페이지가 이미 존재합니다.`);
       }
       break;
     } catch (error) {
@@ -228,6 +199,8 @@ const uploadExistingFiles = async (folderPath) => {
   await Promise.all(
     filesInFolder.map(async (fileBaseName) => {
       const normalizedFileBaseName = fileBaseName.normalize("NFC");
+      // console.log("test: ", fileBaseName);
+      // console.log("testNormal: ", normalizedFileBaseName);
       await createOrUpdatePage(normalizedFileBaseName);
     })
   );
