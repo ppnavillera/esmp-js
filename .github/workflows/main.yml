@@ -18,14 +18,6 @@ jobs:
         run: |
           if [ -f .env ] && git diff --name-only HEAD~1 HEAD | grep -q '.env'; then
             echo "hello, world" # echo "env_changed=true" >> $GITHUB_ENV
-          # else
+          else
             # echo "env_changed=false" >> $GITHUB_ENV
-          # fi
-
-    # - name: Trigger B Repository Workflow
-    #   if: env.env_changed == 'true'
-    #   uses: peter-evans/repository-dispatch@v1
-    #   with:
-    #     token: ${{ secrets.GITHUB_TOKEN }}
-    #     repository: B_Repository_Owner/B_Repository_Name
-    #     event-type: env-file-changed
+          fi
