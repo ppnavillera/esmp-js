@@ -17,7 +17,4 @@ jobs:
         id: check_env
         run: |
           if [ -f .env ] && git diff --name-only HEAD~1 HEAD | grep -q '.env'; then
-            echo "hello, world" # echo "env_changed=true" >> $GITHUB_ENV
-          else
-            # echo "env_changed=false" >> $GITHUB_ENV
-          fi
+            echo "hello, world"
