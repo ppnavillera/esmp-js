@@ -199,7 +199,6 @@ const uploadExistingFiles = async (folderPath) => {
   await Promise.all(
     filesInFolder.map(async (fileBaseName) => {
       const normalizedFileBaseName = fileBaseName.normalize("NFC");
-      // console.log("test: ", fileBaseName);
       // console.log("testNormal: ", normalizedFileBaseName);
       await createOrUpdatePage(normalizedFileBaseName);
     })
