@@ -3,24 +3,24 @@ name: Check .env Change and Trigger B Repo
 on:
   push:
     branches:
-      - main  # main 브랜치에 푸시될 때 실행
+      - main # main 브랜치에 푸시될 때 실행
 
 jobs:
   check-env-change:
     runs-on: ubuntu-latest
 
     steps:
-    - name: Checkout A Repository
-      uses: actions/checkout@v2
+      - name: Checkout A Repository
+        uses: actions/checkout@v2
 
-    - name: Check .env Change
-      id: check_env
-      run: |
-        if [ -f .env ] && git diff --name-only HEAD~1 HEAD | grep -q '.env'; then
-          echo "hello, world" # echo "env_changed=true" >> $GITHUB_ENV
-        else
-          # echo "env_changed=false" >> $GITHUB_ENV
-        fi
+      - name: Check .env Change
+        id: check_env
+        run: |
+          if [ -f .env ] && git diff --name-only HEAD~1 HEAD | grep -q '.env'; then
+            echo "hello, world" # echo "env_changed=true" >> $GITHUB_ENV
+          # else
+            # echo "env_changed=false" >> $GITHUB_ENV
+          # fi
 
     # - name: Trigger B Repository Workflow
     #   if: env.env_changed == 'true'
