@@ -53,7 +53,7 @@ const createOrUpdatePage = async (fileBaseName) => {
   }
 
   processingFiles[fileBaseName] = true;
-  console.log(`createOrUpdatePage 호출: ${fileBaseName}`);
+  // console.log(`createOrUpdatePage 호출: ${fileBaseName}`);
 
   const parts = fileBaseName.split("_");
   let id, titleParts;
